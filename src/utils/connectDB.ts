@@ -1,28 +1,53 @@
-import mongoose, { ConnectOptions } from "mongoose";
+import { Db, MongoClient, MongoClientOptions } from "mongodb";
 
-const mongoURI: string = process.env.MONGO_URI ?? "";
-
-interface CustomConnectOptions extends ConnectOptions {
-	useNewUrlParser?: boolean;
-	useUnifiedTopology: boolean;
-	useCreateIndex: boolean;
+interface DatabaseOptions {
+	uri: string;
+	user: string;
+	password: string;
+	dbName: string;
 }
 
-const connectDB = async (): Promise<void> => {
-	try {
-		// Conecta a la base de datos MongoDB utilizando Mongoose
-		const options: CustomConnectOptions = {
-			useNewUrlParser: true,
-			useUnifiedTopology: true,
-			useCreateIndex: true,
-		};
-		await mongoose.connect(mongoURI, options);
+export class MongoDatabase {
+	private pool: MongoClient | null = null;
+	private readonly options: DatabaseOptions;
 
-		//console.log(`Conectado a MongoDB: ${conn.connection.host}`);
-	} catch (error) {
-		console.error(`Error al conectar a MongoDB: ${(error as Error).message}`);
-		process.exit(1);
+	constructor(options: DatabaseOptions) {
+		console.log(options)
+		this.options = options;
 	}
-};
 
-export default connectDB;
+	public async connect(): Promise<void> {
+		const auth = {
+			username: this.options.user,
+			password: this.options.password,
+		};
+
+		const mongoOptions: MongoClientOptions = {
+			auth,
+			authSource: this.options.dbName,
+			maxPoolSize: 10, // Set the maximum number of connections in the pool
+		};
+
+		try {
+			this.pool = await MongoClient.connect(this.options.uri);
+		} catch (err) {
+			console.error(err);
+			throw new Error("Failed to connect to database");
+		}
+	}
+
+	public getDb(): Db {
+		if (!this.pool) {
+			throw new Error("Database pool not initialized");
+		}
+
+		return this.pool.db(this.options.dbName);
+	}
+
+	public async close(): Promise<void> {
+		if (this.pool) {
+			await this.pool.close();
+			this.pool = null;
+		}
+	}
+}
